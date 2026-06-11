@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HTML PDF Correction Tool v1.0</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f0f0; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+  /* Top bar */
+  #topbar { background: #1a1a1a; color: #fff; display: flex; align-items: center; gap: 12px; padding: 0 16px; height: 48px; flex-shrink: 0; }
+  #topbar .logo { font-size: 13px; font-weight: 600; letter-spacing: 0.5px; color: #fff; white-space: nowrap; }
+  #topbar .version { font-size: 11px; color: #888; background: #333; padding: 2px 7px; border-radius: 10px; }
+  #topbar .spacer { flex: 1; }
+  #topbar button { background: transparent; border: 1px solid #444; color: #ccc; font-size: 12px; padding: 5px 12px; border-radius: 5px; cursor: pointer; white-space: nowrap; }
+  #topbar button:hover { background: #333; }
+  #topbar button.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+  #topbar button.primary:hover { background: #1d4ed8; }
+
+  /* Ribbon toolbar */
+  #ribbon { background: #fff; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 4px; padding: 4px 12px; flex-shrink: 0; flex-wrap: wrap; min-height: 40px; }
+  #ribbon .sep { width: 1px; height: 22px; background: #ddd; margin: 0 4px; }
+  #ribbon select, #ribbon input[type=number] { border: 1px solid #ddd; border-radius: 4px; padding: 3px 6px; font-size: 12px; height: 28px; background: #fff; }
+  #ribbon input[type=number] { width: 48px; text-align: center; }
+  #ribbon button { background: transparent; border: 1px solid transparent; border-radius: 4px; padding: 3px 8px; font-size: 12px; cursor: pointer; height: 28px; color: #333; display: flex; align-items: center; gap: 4px; }
+  #ribbon button:hover { background: #f0f0f0; border-color: #ccc; }
+  #ribbon button.active { background: #dbeafe; border-color: #93c5fd; }
+  #ribbon label { font-size: 11px; color: #888; margin-right: 2px; }
+
+  /* Print mode bar */
+  #modebar { background: #fafafa; border-bottom: 1px solid #e5e5e5; display: flex; align-items: center; gap: 8px; padding: 6px 16px; flex-shrink: 0; font-size: 12px; color: #555; }
+  #modebar .mode-label { font-weight: 600; color: #333; margin-right: 4px; }
+  #modebar button { background: #fff; border: 1px solid #ccc; border-radius: 16px; padding: 3px 12px; font-size: 11px; cursor: pointer; color: #444; white-space: nowrap; }
+  #modebar button:hover { border-color: #2563eb; color: #2563eb; }
+  #modebar button.active { background: #2563eb; border-color: #2563eb; color: #fff; }
+  #modebar .mode-none { color: #aaa; font-style: italic; }
+
+  /* Main area */
+  #main { display: flex; flex: 1; overflow: hidden; }
+
+  /* Left panel - import */
+  #import-panel { width: 280px; background: #fff; border-right: 1px solid #ddd; display: flex; flex-direction: column; flex-shrink: 0; }
+  #import-panel.hidden { display: none; }
+  #import-panel h3 { font-size: 12px; font-weight: 600; color: #555; padding: 10px 14px 6px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #eee; }
+  #html-input { flex: 1; width: 100%; border: none; padding: 10px 14px; font-size: 11px; font-family: 'Menlo', 'Monaco', monospace; resize: none; color: #333; outline: none; background: #fafafa; }
+  #import-actions { padding: 10px 14px; display: flex; gap: 8px; border-top: 1px solid #eee; }
+  #import-actions button { flex: 1; padding: 7px; font-size: 12px; border-radius: 5px; cursor: pointer; border: 1px solid #ddd; background: #fff; }
+  #import-actions button.go { background: #2563eb; color: #fff; border-color: #2563eb; font-weight: 600; }
+  #import-actions button.go:hover { background: #1d4ed8; }
+  #file-input { display: none; }
+  .drop-hint { padding: 8px 14px; font-size: 11px; color: #aaa; text-align: center; border-top: 1px solid #eee; }
+
+  /* Document canvas */
+  #canvas-area { flex: 1; overflow-y: auto; background: #888; padding: 24px; display: flex; flex-direction: column; align-items: center; gap: 0; }
+
+  /* Welcome screen */
+  #welcome { background: #fff; border-radius: 8px; padding: 40px; max-width: 480px; text-align: center; margin: auto; }
+  #welcome h2 { font-size: 20px; color: #1a1a1a; margin-bottom: 8px; }
+  #welcome p { font-size: 13px; color: #666; line-height: 1.6; margin-bottom: 20px; }
+  #welcome .hint { font-size: 11px; color: #aaa; }
+
+  /* Page simulation */
+  .doc-page { width: 816px; min-height: 1056px; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.25); margin-bottom: 24px; position: relative; flex-shrink: 0; }
+  .page-number { position: absolute; bottom: 10px; right: 16px; font-size: 10px; color: #bbb; pointer-events: none; }
+  .page-break-label { width: 816px; text-align: center; font-size: 10px; color: #bbb; letter-spacing: 1px; text-transform: uppercase; margin: 0 0 0; padding: 4px 0; background: #888; position: relative; }
+
+  /* Content editable wrapper inside pages */
+  .page-content { width: 100%; height: 100%; outline: none; padding: 72px 72px 80px; }
+  .page-content:focus { outline: none; }
+  .page-content * { max-width: 100%; }
+
+  /* Floating mini toolbar */
+  #mini-toolbar { position: fixed; background: #1a1a1a; border-radius: 6px; padding: 4px 6px; display: none; gap: 2px; z-index: 9999; box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
+  #mini-toolbar button { background: transparent; border: none; color: #ddd; font-size: 12px; padding: 3px 7px; border-radius: 4px; cursor: pointer; }
+  #mini-toolbar button:hover { background: #333; color: #fff; }
+  #mini-toolbar .mt-sep { width: 1px; height: 16px; background: #444; margin: 0 2px; }
+
+  /* Context menu */
+  #ctx-menu { position: fixed; background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 4px 0; z-index: 9999; display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.15); min-width: 160px; }
+  #ctx-menu button { display: block; width: 100%; text-align: left; background: transparent; border: none; padding: 6px 14px; font-size: 12px; color: #333; cursor: pointer; }
+  #ctx-menu button:hover { background: #f0f5ff; color: #2563eb; }
+  #ctx-menu .ctx-sep { height: 1px; background: #eee; margin: 3px 0; }
+
+  /* Right panel - changes */
+  #changes-panel { width: 220px; background: #fff; border-left: 1px solid #ddd; display: flex; flex-direction: column; flex-shrink: 0; }
+  #changes-panel h3 { font-size: 11px; font-weight: 600; color: #555; padding: 10px 14px 6px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+  #changes-panel h3 span { font-weight: 400; color: #aaa; font-size: 10px; cursor: pointer; }
+  #change-log { flex: 1; overflow-y: auto; padding: 8px; }
+  .change-item { background: #f9f9f9; border: 1px solid #eee; border-radius: 5px; padding: 6px 8px; margin-bottom: 6px; font-size: 11px; }
+  .change-item .ct { font-weight: 600; color: #2563eb; margin-bottom: 2px; }
+  .change-item .cd { color: #666; font-size: 10px; line-height: 1.4; }
+  .change-empty { font-size: 11px; color: #bbb; text-align: center; padding: 20px 10px; font-style: italic; }
+
+  /* Status bar */
+  #statusbar { background: #2563eb; color: #fff; font-size: 11px; padding: 3px 16px; display: flex; gap: 16px; flex-shrink: 0; }
+  #statusbar span { opacity: 0.85; }
+
+  /* Image replacement overlay */
+  #img-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 10000; align-items: center; justify-content: center; }
+  #img-overlay.show { display: flex; }
+  #img-dialog { background: #fff; border-radius: 8px; padding: 24px; width: 380px; }
+  #img-dialog h3 { font-size: 14px; margin-bottom: 12px; }
+  #img-dialog input { width: 100%; border: 1px solid #ddd; border-radius: 5px; padding: 8px 10px; font-size: 13px; margin-bottom: 10px; }
+  #img-dialog .actions { display: flex; gap: 8px; justify-content: flex-end; }
+  #img-dialog .actions button { padding: 7px 16px; border-radius: 5px; font-size: 12px; cursor: pointer; border: 1px solid #ddd; background: #fff; }
+  #img-dialog .actions button.ok { background: #2563eb; color: #fff; border-color: #2563eb; }
+
+  @media print {
+    #topbar, #ribbon, #modebar, #import-panel, #changes-panel, #statusbar, .page-number, .page-break-label { display: none !important; }
+    body { background: white; }
+    #canvas-area { background: white; padding: 0; }
+    .doc-page { box-shadow: none; margin: 0; page-break-after: always; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Top bar -->
+<div id="topbar">
+  <div class="logo">HTML PDF Correction Tool</div>
+  <div class="version">v1.0</div>
+  <div class="spacer"></div>
+  <button onclick="toggleImport()">&#9776; HTML Source</button>
+  <button onclick="loadSample()">Load sample</button>
+  <button onclick="exportPDF()" class="primary">&#9112; Export PDF</button>
+</div>
+
+<!-- Ribbon -->
+<div id="ribbon">
+  <label>Font</label>
+  <select id="rb-font" onchange="execCmd('fontName', this.value)">
+    <option value="Arial">Arial</option>
+    <option value="Georgia">Georgia</option>
+    <option value="Times New Roman">Times New Roman</option>
+    <option value="Courier New">Courier New</option>
+    <option value="Verdana">Verdana</option>
+  </select>
+  <input type="number" id="rb-size" value="12" min="6" max="72" onchange="execCmd('fontSize', sizeToLegacy(this.value))" title="Font size">
+  <div class="sep"></div>
+  <button onclick="execCmd('bold')" title="Bold"><b>B</b></button>
+  <button onclick="execCmd('italic')" title="Italic"><i>I</i></button>
+  <button onclick="execCmd('underline')" title="Underline"><u>U</u></button>
+  <button onclick="execCmd('strikeThrough')" title="Strikethrough"><s>S</s></button>
+  <div class="sep"></div>
+  <button onclick="execCmd('justifyLeft')" title="Align left">&#8676;</button>
+  <button onclick="execCmd('justifyCenter')" title="Center">&#8285;</button>
+  <button onclick="execCmd('justifyRight')" title="Align right">&#8677;</button>
+  <div class="sep"></div>
+  <button onclick="execCmd('insertUnorderedList')" title="Bullet list">&#8226; List</button>
+  <button onclick="execCmd('insertOrderedList')" title="Numbered list">1. List</button>
+  <div class="sep"></div>
+  <label>Color</label>
+  <input type="color" id="rb-color" onchange="execCmd('foreColor', this.value)" title="Text color" style="width:28px; height:28px; border:1px solid #ddd; border-radius:4px; padding:1px; cursor:pointer;">
+  <div class="sep"></div>
+  <button onclick="execCmd('undo')" title="Undo">&#8630; Undo</button>
+  <button onclick="execCmd('redo')" title="Redo">&#8631; Redo</button>
+</div>
+
+<!-- Print mode bar -->
+<div id="modebar">
+  <span class="mode-label">Print mode:</span>
+  <span id="mode-buttons"><span class="mode-none">Load a document to see available print modes</span></span>
+  <div style="flex:1"></div>
+  <span id="active-mode-label" style="font-size:11px; color:#2563eb; font-weight:600;"></span>
+</div>
+
+<!-- Main -->
+<div id="main">
+  <!-- Import panel -->
+  <div id="import-panel">
+    <h3>HTML Source</h3>
+    <textarea id="html-input" placeholder="Paste your HTML here..."></textarea>
+    <div class="drop-hint">or</div>
+    <div id="import-actions">
+      <button onclick="document.getElementById('file-input').click()">&#8679; Upload .html</button>
+      <button class="go" onclick="renderHTML()">Render &#8594;</button>
+    </div>
+    <input type="file" id="file-input" accept=".html,.htm" onchange="loadFile(event)">
+  </div>
+
+  <!-- Canvas -->
+  <div id="canvas-area">
+    <div id="welcome">
+      <h2>HTML PDF Correction Tool</h2>
+      <p>Paste your Claude-generated HTML in the source panel, then click <strong>Render</strong> to begin editing. Click directly into the document to make corrections just like Word.</p>
+      <p class="hint">Supports color / B&W / with tips / without tips print modes via CSS classes</p>
+    </div>
+  </div>
+
+  <!-- Changes panel -->
+  <div id="changes-panel">
+    <h3>Change log <span onclick="clearLog()">Clear</span></h3>
+    <div id="change-log"><div class="change-empty">No changes yet</div></div>
+  </div>
+</div>
+
+<!-- Status bar -->
+<div id="statusbar">
+  <span id="st-pages">Pages: 0</span>
+  <span id="st-mode">Mode: none</span>
+  <span id="st-status">Ready</span>
+</div>
+
+<!-- Floating mini toolbar -->
+<div id="mini-toolbar">
+  <button onclick="miniCmd('bold')"><b>B</b></button>
+  <button onclick="miniCmd('italic')"><i>I</i></button>
+  <button onclick="miniCmd('underline')"><u>U</u></button>
+  <div class="mt-sep"></div>
+  <button onclick="miniCmd('foreColor','#e53e3e')" style="color:#e53e3e;">A</button>
+  <button onclick="miniCmd('foreColor','#2563eb')" style="color:#2563eb;">A</button>
+  <button onclick="miniCmd('foreColor','#000000')">A</button>
+  <div class="mt-sep"></div>
+  <button onclick="miniCmd('removeFormat')">&#10005;</button>
+</div>
+
+<!-- Context menu -->
+<div id="ctx-menu">
+  <button onclick="ctxTableAction('insertRowAbove')">Insert row above</button>
+  <button onclick="ctxTableAction('insertRowBelow')">Insert row below</button>
+  <button onclick="ctxTableAction('deleteRow')">Delete row</button>
+  <div class="ctx-sep"></div>
+  <button onclick="ctxTableAction('insertColLeft')">Insert column left</button>
+  <button onclick="ctxTableAction('insertColRight')">Insert column right</button>
+  <button onclick="ctxTableAction('deleteCol')">Delete column</button>
+  <div class="ctx-sep"></div>
+  <button onclick="ctxImageAction()">Replace image...</button>
+  <div class="ctx-sep"></div>
+  <button onclick="ctxPadding('increase')">Increase spacing</button>
+  <button onclick="ctxPadding('decrease')">Decrease spacing</button>
+</div>
+
+<!-- Image replacement dialog -->
+<div id="img-overlay">
+  <div id="img-dialog">
+    <h3>Replace image</h3>
+    <input type="text" id="img-url-input" placeholder="Paste image URL...">
+    <div class="actions">
+      <button onclick="cancelImgReplace()">Cancel</button>
+      <button class="ok" onclick="confirmImgReplace()">Replace</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let currentModes = [];
+let activeMode = null;
+let changeLog = [];
+let ctxTarget = null;
+let imgTarget = null;
+let pageContents = [];
+
+function toggleImport() {
+  const p = document.getElementById('import-panel');
+  p.classList.toggle('hidden');
+}
+
+function loadFile(e) {
+  const f = e.target.files[0];
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = ev => { document.getElementById('html-input').value = ev.target.result; renderHTML(); };
+  r.readAsText(f);
+}
+
+function loadSample() {
+  const sample = `<!DOCTYPE html>
+<html>
+<head>
+<style>
+  body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
+  .mode-color .tip { display: block; background: #fffbea; border-left: 4px solid #f6ad55; padding: 10px 14px; margin: 12px 0; border-radius: 4px; }
+  .mode-bw .tip { display: block; background: #f7f7f7; border-left: 4px solid #999; padding: 10px 14px; margin: 12px 0; border-radius: 4px; }
+  .mode-notips .tip, .mode-bw-notips .tip { display: none; }
+  .mode-color h1 { color: #1a4e2a; }
+  .mode-bw h1, .mode-notips h1, .mode-bw-notips h1 { color: #111; }
+  .mode-color table { border-collapse: collapse; width: 100%; }
+  table { border-collapse: collapse; width: 100%; }
+  td, th { border: 1px solid #ccc; padding: 8px 12px; font-size: 13px; }
+  th { background: #1a4e2a; color: #fff; }
+  .mode-bw th, .mode-notips th, .mode-bw-notips th { background: #444; }
+  p { line-height: 1.6; font-size: 13px; margin-bottom: 10px; }
+  .page { padding: 72px; }
+  .page-break { page-break-before: always; }
+</style>
+</head>
+<body class="mode-color">
+<div class="page">
+  <h1>Math Bridge&#8482; HS Algebra 2 &mdash; Unit 1, Lesson 1</h1>
+  <h2>Functions and Their Inverses</h2>
+  <p>In this lesson, students explore the concept of inverse functions through visual and algebraic approaches. The Scaffold Release Framework&#8482; guides progression from supported access to independent transfer.</p>
+
+  <div class="tip"><strong>Teacher tip:</strong> Before beginning, activate prior knowledge by asking students to describe what it means to "undo" an operation. Use the Math Talk Prep Kit&#8482; sentence frames on the board.</div>
+
+  <h3>Vocabulary</h3>
+  <table>
+    <tr><th>Term</th><th>Definition</th><th>Example</th></tr>
+    <tr><td>Function</td><td>A relation where each input has exactly one output</td><td>f(x) = 2x + 3</td></tr>
+    <tr><td>Inverse</td><td>A function that reverses the original function</td><td>f&#8315;&#185;(x) = (x&minus;3)/2</td></tr>
+    <tr><td>Domain</td><td>The set of all valid input values</td><td>x &ge; 0</td></tr>
+    <tr><td>Range</td><td>The set of all valid output values</td><td>y &ge; 3</td></tr>
+  </table>
+
+  <p style="margin-top: 16px;">Students should complete the warmup activity on page 2 before proceeding to the main lesson activities.</p>
+
+  <div class="tip"><strong>ELL support:</strong> Provide the Puente de Palabras&#8482; companion guide for vocabulary previewing in Spanish. Pon Paw&#242;l&#8482; guide available for Haitian Creole speakers.</div>
+</div>
+
+<div class="page page-break">
+  <h2>Warmup: Mapping Machines</h2>
+  <p>Use the function machine below to complete the table. Then write the inverse operation in the space provided.</p>
+
+  <table>
+    <tr><th>Input (x)</th><th>Function: multiply by 3, then add 5</th><th>Output f(x)</th></tr>
+    <tr><td>0</td><td></td><td>5</td></tr>
+    <tr><td>2</td><td></td><td>11</td></tr>
+    <tr><td>5</td><td></td><td>20</td></tr>
+    <tr><td>10</td><td></td><td>35</td></tr>
+  </table>
+
+  <p style="margin-top:16px;"><strong>Reflection:</strong> Describe in your own words how you would reverse the function above.</p>
+  <div style="border: 1px solid #ccc; min-height: 60px; border-radius: 4px; padding: 10px; margin-top: 8px; background: #fafafa;"></div>
+
+  <div class="tip"><strong>Teacher tip:</strong> If students struggle with the reflection, prompt with: "If you ended up at 35 and want to get back to 10, what steps would you reverse first?"</div>
+</div>
+</body>
+</html>`;
+  document.getElementById('html-input').value = sample;
+  renderHTML();
+}
+
+function detectPrintModes(html) {
+  const modes = [];
+  const classMap = {
+    'mode-color': 'Color',
+    'mode-bw': 'Black & White',
+    'mode-notips': 'Color, no tips',
+    'mode-bw-notips': 'B&W, no tips'
+  };
+  for (const [cls, label] of Object.entries(classMap)) {
+    if (html.includes(cls)) modes.push({ cls, label });
+  }
+  if (!modes.length) {
+    const bodyMatch = html.match(/class="([^"]+)"/);
+    if (bodyMatch) {
+      bodyMatch[1].split(' ').forEach(c => {
+        if (c.startsWith('mode-')) modes.push({ cls: c, label: c.replace('mode-', '').replace(/-/g, ' ') });
+      });
+    }
+  }
+  return modes;
+}
+
+function renderHTML() {
+  const raw = document.getElementById('html-input').value.trim();
+  if (!raw) return;
+
+  currentModes = detectPrintModes(raw);
+  activeMode = currentModes.length ? currentModes[0].cls : null;
+  renderModeBar();
+
+  const html = applyMode(raw, activeMode);
+  buildPages(html, raw);
+  document.getElementById('st-status').textContent = 'Document loaded';
+  document.getElementById('import-panel').classList.add('hidden');
+}
+
+function applyMode(rawHTML, modeCls) {
+  if (!modeCls) return rawHTML;
+  return rawHTML.replace(/(<body[^>]*class=")[^"]*(")/i, `$1${modeCls}$2`)
+                .replace(/(<body[^>]*class=')([^']*)(')/i, `$1${modeCls}$3`);
+}
+
+function buildPages(html, rawHTML) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, 'text/html');
+
+  const style = doc.querySelector('style') ? doc.querySelector('style').textContent : '';
+  const bodyAttrs = doc.body ? doc.body.className : '';
+
+  const allNodes = Array.from(doc.body.childNodes);
+  const pages = [];
+  let current = [];
+
+  allNodes.forEach(node => {
+    const el = node;
+    if (el.nodeType === 1) {
+      const cls = el.className || '';
+      const style2 = el.getAttribute('style') || '';
+      if (cls.includes('page-break') || style2.includes('page-break-before') || style2.includes('break-before')) {
+        if (current.length) pages.push(current);
+        current = [el];
+        return;
+      }
+    }
+    current.push(el);
+  });
+  if (current.length) pages.push(current);
+
+  const canvas = document.getElementById('canvas-area');
+  canvas.innerHTML = '';
+  pageContents = [];
+
+  pages.forEach((nodes, i) => {
+    if (i > 0) {
+      const lbl = document.createElement('div');
+      lbl.className = 'page-break-label';
+      lbl.textContent = '--- page break ---';
+      canvas.appendChild(lbl);
+    }
+    const page = document.createElement('div');
+    page.className = 'doc-page';
+
+    const styleEl = document.createElement('style');
+    styleEl.textContent = style;
+    page.appendChild(styleEl);
+
+    const content = document.createElement('div');
+    content.className = 'page-content ' + bodyAttrs;
+    content.contentEditable = 'true';
+    content.spellcheck = true;
+
+    nodes.forEach(n => {
+      const clone = n.cloneNode(true);
+      content.appendChild(clone);
+    });
+
+    content.addEventListener('mouseup', onTextSelect);
+    content.addEventListener('keyup', () => logChange('Text edit', 'Content modified on page ' + (i+1)));
+    content.addEventListener('contextmenu', onContextMenu);
+    content.addEventListener('click', onClickElement);
+
+    page.appendChild(content);
+
+    const pn = document.createElement('div');
+    pn.className = 'page-number';
+    pn.textContent = 'Page ' + (i+1);
+    page.appendChild(pn);
+
+    canvas.appendChild(page);
+    pageContents.push({ page, content, rawNodes: nodes });
+  });
+
+  document.getElementById('st-pages').textContent = 'Pages: ' + pages.length;
+  updateModeStatus();
+}
+
+function renderModeBar() {
+  const bar = document.getElementById('mode-buttons');
+  if (!currentModes.length) {
+    bar.innerHTML = '<span class="mode-none">No print modes detected in this file</span>';
+    return;
+  }
+  bar.innerHTML = currentModes.map(m =>
+    `<button class="${m.cls === activeMode ? 'active' : ''}" onclick="switchMode('${m.cls}')">${m.label}</button>`
+  ).join('');
+}
+
+function switchMode(cls) {
+  activeMode = cls;
+  const raw = document.getElementById('html-input').value;
+  const html = applyMode(raw, cls);
+  buildPages(html, raw);
+  renderModeBar();
+  logChange('Print mode', 'Switched to: ' + currentModes.find(m => m.cls === cls)?.label);
+}
+
+function updateModeStatus() {
+  const lbl = currentModes.find(m => m.cls === activeMode);
+  document.getElementById('st-mode').textContent = 'Mode: ' + (lbl ? lbl.label : 'none');
+  document.getElementById('active-mode-label').textContent = lbl ? 'Active: ' + lbl.label : '';
+}
+
+function execCmd(cmd, val) {
+  document.execCommand(cmd, false, val || null);
+  logChange('Format', cmd + (val ? ': ' + val : ''));
+}
+
+function sizeToLegacy(pt) {
+  if (pt <= 10) return 1;
+  if (pt <= 13) return 2;
+  if (pt <= 16) return 3;
+  if (pt <= 18) return 4;
+  if (pt <= 24) return 5;
+  if (pt <= 32) return 6;
+  return 7;
+}
+
+function miniCmd(cmd, val) {
+  document.execCommand(cmd, false, val || null);
+  hideMiniToolbar();
+  logChange('Format', cmd + (val ? ': ' + val : ''));
+}
+
+let miniTimeout;
+function onTextSelect(e) {
+  clearTimeout(miniTimeout);
+  miniTimeout = setTimeout(() => {
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed) { hideMiniToolbar(); return; }
+    const range = sel.getRangeAt(0);
+    const rect = range.getBoundingClientRect();
+    if (rect.width === 0) { hideMiniToolbar(); return; }
+    const mt = document.getElementById('mini-toolbar');
+    mt.style.display = 'flex';
+    mt.style.left = (rect.left + rect.width / 2 - 80) + 'px';
+    mt.style.top = (rect.top - 40) + 'px';
+  }, 100);
+}
+
+function hideMiniToolbar() {
+  document.getElementById('mini-toolbar').style.display = 'none';
+}
+
+document.addEventListener('mousedown', (e) => {
+  if (!e.target.closest('#mini-toolbar')) hideMiniToolbar();
+  if (!e.target.closest('#ctx-menu')) hideCtxMenu();
+});
+
+function onContextMenu(e) {
+  e.preventDefault();
+  ctxTarget = e.target;
+  const m = document.getElementById('ctx-menu');
+  m.style.display = 'block';
+  m.style.left = e.clientX + 'px';
+  m.style.top = e.clientY + 'px';
+}
+
+function hideCtxMenu() {
+  document.getElementById('ctx-menu').style.display = 'none';
+}
+
+function onClickElement(e) {
+  if (e.target.tagName === 'IMG') {
+    e.target.style.outline = '2px solid #2563eb';
+    imgTarget = e.target;
+  } else {
+    document.querySelectorAll('.page-content img').forEach(i => i.style.outline = '');
+    imgTarget = null;
+  }
+}
+
+function ctxTableAction(action) {
+  hideCtxMenu();
+  if (!ctxTarget) return;
+  const td = ctxTarget.closest('td, th');
+  const tr = ctxTarget.closest('tr');
+  const table = ctxTarget.closest('table');
+  if (!table) return;
+
+  if (action === 'insertRowBelow' && tr) {
+    const newRow = tr.cloneNode(true);
+    newRow.querySelectorAll('td, th').forEach(c => c.textContent = '');
+    tr.parentNode.insertBefore(newRow, tr.nextSibling);
+    logChange('Table', 'Row inserted below');
+  } else if (action === 'insertRowAbove' && tr) {
+    const newRow = tr.cloneNode(true);
+    newRow.querySelectorAll('td, th').forEach(c => c.textContent = '');
+    tr.parentNode.insertBefore(newRow, tr);
+    logChange('Table', 'Row inserted above');
+  } else if (action === 'deleteRow' && tr) {
+    tr.parentNode.removeChild(tr);
+    logChange('Table', 'Row deleted');
+  } else if (action === 'insertColRight' && td) {
+    const idx = Array.from(tr.cells).indexOf(td);
+    table.querySelectorAll('tr').forEach(row => {
+      const ref = row.cells[idx];
+      const newCell = document.createElement(ref && ref.tagName === 'TH' ? 'th' : 'td');
+      newCell.style.cssText = ref ? ref.style.cssText : '';
+      if (ref) ref.parentNode.insertBefore(newCell, ref.nextSibling);
+    });
+    logChange('Table', 'Column inserted right');
+  } else if (action === 'insertColLeft' && td) {
+    const idx = Array.from(tr.cells).indexOf(td);
+    table.querySelectorAll('tr').forEach(row => {
+      const ref = row.cells[idx];
+      const newCell = document.createElement(ref && ref.tagName === 'TH' ? 'th' : 'td');
+      newCell.style.cssText = ref ? ref.style.cssText : '';
+      if (ref) ref.parentNode.insertBefore(newCell, ref);
+    });
+    logChange('Table', 'Column inserted left');
+  } else if (action === 'deleteCol' && td) {
+    const idx = Array.from(tr.cells).indexOf(td);
+    table.querySelectorAll('tr').forEach(row => {
+      if (row.cells[idx]) row.removeChild(row.cells[idx]);
+    });
+    logChange('Table', 'Column deleted');
+  }
+}
+
+function ctxImageAction() {
+  hideCtxMenu();
+  if (ctxTarget && ctxTarget.tagName === 'IMG') imgTarget = ctxTarget;
+  if (!imgTarget) { alert('Click an image first, then right-click to replace.'); return; }
+  document.getElementById('img-url-input').value = imgTarget.src || '';
+  document.getElementById('img-overlay').classList.add('show');
+}
+
+function cancelImgReplace() {
+  document.getElementById('img-overlay').classList.remove('show');
+}
+
+function confirmImgReplace() {
+  const url = document.getElementById('img-url-input').value.trim();
+  if (url && imgTarget) {
+    imgTarget.src = url;
+    imgTarget.style.outline = '';
+    logChange('Image', 'Image replaced');
+  }
+  cancelImgReplace();
+}
+
+function ctxPadding(dir) {
+  hideCtxMenu();
+  if (!ctxTarget) return;
+  const el = ctxTarget.closest('p, div, h1, h2, h3, h4, li') || ctxTarget;
+  const cur = parseInt(window.getComputedStyle(el).paddingTop) || 0;
+  const delta = dir === 'increase' ? 8 : -8;
+  el.style.padding = Math.max(0, cur + delta) + 'px';
+  logChange('Spacing', dir === 'increase' ? 'Spacing increased' : 'Spacing decreased');
+}
+
+function logChange(type, desc) {
+  const now = new Date();
+  const t = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
+  changeLog.unshift({ type, desc, t });
+  if (changeLog.length > 50) changeLog.pop();
+  renderLog();
+}
+
+function renderLog() {
+  const el = document.getElementById('change-log');
+  if (!changeLog.length) { el.innerHTML = '<div class="change-empty">No changes yet</div>'; return; }
+  el.innerHTML = changeLog.map(c =>
+    `<div class="change-item"><div class="ct">${c.type}</div><div class="cd">${c.desc}<br><span style="color:#bbb">${c.t}</span></div></div>`
+  ).join('');
+}
+
+function clearLog() {
+  changeLog = [];
+  renderLog();
+}
+
+function exportPDF() {
+  const modeLbl = currentModes.find(m => m.cls === activeMode);
+  const msg = modeLbl
+    ? `Exporting as: ${modeLbl.label}\n\nThis will open the browser print dialog. Select "Save as PDF" as the destination.`
+    : 'This will open the browser print dialog. Select "Save as PDF" as the destination.';
+  if (confirm(msg)) {
+    document.getElementById('st-status').textContent = 'Preparing print...';
+    setTimeout(() => { window.print(); document.getElementById('st-status').textContent = 'Ready'; }, 200);
+  }
+}
+</script>
+</body>
+</html>
