@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HTML PDF Correction Tool v1.2</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #6b7280; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+#topbar { background: #1a1a1a; color: #fff; display: flex; align-items: center; gap: 8px; padding: 0 14px; height: 48px; flex-shrink: 0; }
+#topbar .logo { font-size: 13px; font-weight: 600; color: #fff; white-space: nowrap; }
+#topbar .version { font-size: 11px; color: #888; background: #333; padding: 2px 7px; border-radius: 10px; }
+#topbar .spacer { flex: 1; }
+#topbar button { background: transparent; border: 1px solid #444; color: #ccc; font-size: 12px; padding: 5px 11px; border-radius: 5px; cursor: pointer; white-space: nowrap; display: flex; align-items: center; gap: 5px; }
+#topbar button:hover { background: #333; }
+#topbar button.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+#topbar button.primary:hover { background: #1d4ed8; }
+#topbar button.danger { border-color: #666; color: #f87171; }
+#topbar button.danger:hover { background: #3a1a1a; }
+#topbar .tb-sep { width: 1px; height: 24px; background: #333; margin: 0 2px; }
+
+#ribbon { background: #fff; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 4px; padding: 4px 12px; flex-shrink: 0; flex-wrap: wrap; min-height: 40px; }
+#ribbon .sep { width: 1px; height: 22px; background: #ddd; margin: 0 4px; }
+#ribbon select, #ribbon input[type=number] { border: 1px solid #ddd; border-radius: 4px; padding: 3px 6px; font-size: 12px; height: 28px; background: #fff; }
+#ribbon input[type=number] { width: 48px; text-align: center; }
+#ribbon button { background: transparent; border: 1px solid transparent; border-radius: 4px; padding: 3px 8px; font-size: 12px; cursor: pointer; height: 28px; color: #333; display: flex; align-items: center; gap: 4px; }
+#ribbon button:hover { background: #f0f0f0; border-color: #ccc; }
+#ribbon label { font-size: 11px; color: #888; margin-right: 2px; }
+
+#modebar { background: #fafafa; border-bottom: 1px solid #e5e5e5; display: flex; align-items: center; gap: 8px; padding: 6px 16px; flex-shrink: 0; font-size: 12px; color: #555; }
+#modebar .mode-label { font-weight: 600; color: #333; margin-right: 4px; }
+#modebar button { background: #fff; border: 1px solid #ccc; border-radius: 16px; padding: 3px 12px; font-size: 11px; cursor: pointer; color: #444; white-space: nowrap; }
+#modebar button:hover { border-color: #2563eb; color: #2563eb; }
+#modebar button.active { background: #2563eb; border-color: #2563eb; color: #fff; }
+#modebar .mode-none { color: #aaa; font-style: italic; }
+
+#main { display: flex; flex: 1; overflow: hidden; }
+
+#import-panel { width: 280px; background: #fff; border-right: 1px solid #ddd; display: flex; flex-direction: column; flex-shrink: 0; }
+#import-panel.hidden { display: none; }
+#import-panel h3 { font-size: 12px; font-weight: 600; color: #555; padding: 10px 14px 6px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #eee; }
+#html-input { flex: 1; width: 100%; border: none; padding: 10px 14px; font-size: 11px; font-family: 'Menlo','Monaco',monospace; resize: none; color: #333; outline: none; background: #fafafa; }
+#import-actions { padding: 10px 14px; display: flex; gap: 8px; border-top: 1px solid #eee; }
+#import-actions button { flex: 1; padding: 7px; font-size: 12px; border-radius: 5px; cursor: pointer; border: 1px solid #ddd; background: #fff; }
+#import-actions button.go { background: #2563eb; color: #fff; border-color: #2563eb; font-weight: 600; }
+
+#canvas-area { flex: 1; overflow-y: auto; background: #6b7280; padding: 32px 24px; display: flex; flex-direction: column; align-items: center; gap: 0; }
+
+#welcome { background: #fff; border-radius: 8px; padding: 40px; max-width: 480px; text-align: center; margin: auto; }
+#welcome h2 { font-size: 20px; color: #1a1a1a; margin-bottom: 8px; }
+#welcome p { font-size: 13px; color: #666; line-height: 1.6; margin-bottom: 16px; }
+#welcome .hint { font-size: 11px; color: #aaa; }
+
+/* Page sheet with ruler edges and shadow */
+.doc-page {
+  width: 816px;
+  min-height: 1056px;
+  background: #fff;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.35), 0 1px 4px rgba(0,0,0,0.2);
+  margin-bottom: 0;
+  position: relative;
+  flex-shrink: 0;
+  border: 1px solid #c8c8c8;
+}
+
+/* Top ruler bar */
+.page-ruler-top {
+  width: 100%;
+  height: 28px;
+  background: #f0f0f0;
+  border-bottom: 2px solid #bbb;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  position: relative;
+  flex-shrink: 0;
+}
+.page-ruler-top .pg-label { font-size: 10px; color: #888; font-weight: 600; letter-spacing: 0.5px; }
+.page-ruler-top .pg-dims { font-size: 9px; color: #bbb; }
+
+/* Ruler tick marks */
+.ruler-ticks { position: absolute; left: 72px; right: 72px; top: 0; height: 100%; display: flex; align-items: flex-end; pointer-events: none; }
+.tick { position: absolute; bottom: 4px; width: 1px; background: #bbb; }
+
+/* Bottom ruler bar */
+.page-ruler-bottom {
+  width: 100%;
+  height: 24px;
+  background: #f0f0f0;
+  border-top: 2px solid #bbb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.page-ruler-bottom span { font-size: 9px; color: #aaa; letter-spacing: 0.3px; }
+
+.page-inner { display: flex; flex-direction: column; }
+
+.page-content { width: 100%; outline: none; padding: 48px 72px 48px; min-height: 976px; }
+.page-content:focus { outline: none; }
+.page-content * { max-width: 100%; }
+
+/* Page gap with break indicator */
+.page-gap {
+  width: 816px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin: 0;
+  flex-shrink: 0;
+}
+.page-gap-line { flex: 1; height: 1px; background: rgba(255,255,255,0.3); }
+.page-gap-label { font-size: 10px; color: rgba(255,255,255,0.6); letter-spacing: 1.5px; text-transform: uppercase; white-space: nowrap; }
+
+#mini-toolbar { position: fixed; background: #1a1a1a; border-radius: 6px; padding: 4px 6px; display: none; gap: 2px; z-index: 9999; box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
+#mini-toolbar button { background: transparent; border: none; color: #ddd; font-size: 12px; padding: 3px 7px; border-radius: 4px; cursor: pointer; }
+#mini-toolbar button:hover { background: #333; color: #fff; }
+#mini-toolbar .mt-sep { width: 1px; height: 16px; background: #444; margin: 0 2px; }
+
+#ctx-menu { position: fixed; background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 4px 0; z-index: 9999; display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.15); min-width: 170px; }
+#ctx-menu button { display: block; width: 100%; text-align: left; background: transparent; border: none; padding: 6px 14px; font-size: 12px; color: #333; cursor: pointer; }
+#ctx-menu button:hover { background: #f0f5ff; color: #2563eb; }
+#ctx-menu .ctx-sep { height: 1px; background: #eee; margin: 3px 0; }
+
+#changes-panel { width: 210px; background: #fff; border-left: 1px solid #ddd; display: flex; flex-direction: column; flex-shrink: 0; }
+#changes-panel h3 { font-size: 11px; font-weight: 600; color: #555; padding: 10px 14px 6px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+#changes-panel h3 span { font-weight: 400; color: #aaa; font-size: 10px; cursor: pointer; }
+#change-log { flex: 1; overflow-y: auto; padding: 8px; }
+.change-item { background: #f9f9f9; border: 1px solid #eee; border-radius: 5px; padding: 6px 8px; margin-bottom: 6px; font-size: 11px; }
+.change-item .ct { font-weight: 600; color: #2563eb; margin-bottom: 2px; }
+.change-item .cd { color: #666; font-size: 10px; line-height: 1.4; }
+.change-empty { font-size: 11px; color: #bbb; text-align: center; padding: 20px 10px; font-style: italic; }
+
+#statusbar { background: #2563eb; color: #fff; font-size: 11px; padding: 3px 16px; display: flex; gap: 16px; flex-shrink: 0; }
+#statusbar span { opacity: 0.85; }
+
+/* Image resize handles */
+.img-selected { outline: 2px solid #2563eb !important; position: relative; }
+.resize-handle { position: absolute; width: 8px; height: 8px; background: #2563eb; border: 1px solid #fff; border-radius: 2px; z-index: 100; cursor: se-resize; }
+
+/* Modals */
+.modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 10000; align-items: center; justify-content: center; }
+.modal-overlay.show { display: flex; }
+.modal-box { background: #fff; border-radius: 8px; padding: 24px; width: 400px; }
+.modal-box h3 { font-size: 14px; margin-bottom: 14px; color: #1a1a1a; }
+.modal-box input[type=text] { width: 100%; border: 1px solid #ddd; border-radius: 5px; padding: 8px 10px; font-size: 13px; margin-bottom: 10px; }
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
+.modal-actions button { padding: 7px 16px; border-radius: 5px; font-size: 12px; cursor: pointer; border: 1px solid #ddd; background: #fff; }
+.modal-actions button.ok { background: #2563eb; color: #fff; border-color: #2563eb; }
+.modal-actions button.danger { background: #fff; color: #dc2626; border-color: #dc2626; }
+
+/* Close confirm */
+#close-modal .warning { font-size: 13px; color: #555; line-height: 1.6; margin-bottom: 16px; }
+
+/* Insert image drop zone */
+#img-dropzone { border: 2px dashed #ddd; border-radius: 6px; padding: 24px; text-align: center; cursor: pointer; margin-bottom: 12px; color: #aaa; font-size: 13px; transition: border-color 0.15s; }
+#img-dropzone:hover, #img-dropzone.drag-over { border-color: #2563eb; color: #2563eb; background: #f0f5ff; }
+#img-dropzone input { display: none; }
+
+@media print {
+  #topbar, #ribbon, #modebar, #import-panel, #changes-panel, #statusbar, .page-ruler-top, .page-ruler-bottom, .page-gap, #mini-toolbar, #ctx-menu { display: none !important; }
+  body { background: white; }
+  #canvas-area { background: white; padding: 0; }
+  .doc-page { box-shadow: none; margin: 0; border: none; page-break-after: always; }
+  .page-content { padding: 72px; }
+}
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <div class="logo">HTML PDF Correction Tool</div>
+  <div class="version">v1.2</div>
+  <div class="spacer"></div>
+  <button onclick="document.getElementById('file-input').click()">&#8679; Upload HTML</button>
+  <button onclick="toggleImport()">&#9776; Paste HTML</button>
+  <button onclick="loadSample()">Sample</button>
+  <div class="tb-sep"></div>
+  <button onclick="insertImagePrompt()" id="btn-insert-img" style="display:none">+ Image</button>
+  <button onclick="saveEdited()" id="btn-save" style="display:none">&#8681; Save HTML</button>
+  <button onclick="confirmClose()" id="btn-close" class="danger" style="display:none">&#10005; Close</button>
+  <div class="tb-sep"></div>
+  <button onclick="exportPDF()" class="primary">&#9112; Export PDF</button>
+</div>
+<input type="file" id="file-input" accept=".html,.htm" onchange="loadFile(event)" style="display:none">
+<input type="file" id="img-file-input" accept="image/*" onchange="handleImgUpload(event)" style="display:none">
+
+<div id="ribbon">
+  <label>Font</label>
+  <select id="rb-font" onchange="execCmd('fontName',this.value)">
+    <option value="Arial">Arial</option>
+    <option value="Georgia">Georgia</option>
+    <option value="Times New Roman">Times New Roman</option>
+    <option value="Courier New">Courier New</option>
+    <option value="Verdana">Verdana</option>
+  </select>
+  <input type="number" id="rb-size" value="12" min="6" max="72" onchange="execCmd('fontSize',sizeToLegacy(this.value))" title="Font size">
+  <div class="sep"></div>
+  <button onclick="execCmd('bold')"><b>B</b></button>
+  <button onclick="execCmd('italic')"><i>I</i></button>
+  <button onclick="execCmd('underline')"><u>U</u></button>
+  <button onclick="execCmd('strikeThrough')"><s>S</s></button>
+  <div class="sep"></div>
+  <button onclick="execCmd('justifyLeft')">&#8676;</button>
+  <button onclick="execCmd('justifyCenter')">&#8285;</button>
+  <button onclick="execCmd('justifyRight')">&#8677;</button>
+  <div class="sep"></div>
+  <button onclick="execCmd('insertUnorderedList')">&#8226; List</button>
+  <button onclick="execCmd('insertOrderedList')">1. List</button>
+  <div class="sep"></div>
+  <label>Color</label>
+  <input type="color" id="rb-color" onchange="execCmd('foreColor',this.value)" title="Text color" style="width:28px;height:28px;border:1px solid #ddd;border-radius:4px;padding:1px;cursor:pointer;">
+  <div class="sep"></div>
+  <button onclick="execCmd('undo')">&#8630; Undo</button>
+  <button onclick="execCmd('redo')">&#8631; Redo</button>
+</div>
+
+<div id="modebar">
+  <span class="mode-label">Print mode:</span>
+  <span id="mode-buttons"><span class="mode-none">Load a document to see available print modes</span></span>
+  <div style="flex:1"></div>
+  <span id="active-mode-label" style="font-size:11px;color:#2563eb;font-weight:600;"></span>
+</div>
+
+<div id="main">
+  <div id="import-panel" class="hidden">
+    <h3>Paste HTML</h3>
+    <textarea id="html-input" placeholder="Paste your HTML here..."></textarea>
+    <div id="import-actions">
+      <button onclick="toggleImport()">Cancel</button>
+      <button class="go" onclick="renderHTML()">Render &#8594;</button>
+    </div>
+  </div>
+
+  <div id="canvas-area">
+    <div id="welcome">
+      <h2>HTML PDF Correction Tool</h2>
+      <p>Upload or paste your Claude-generated HTML to begin editing. Click directly into the document to make corrections just like Word.</p>
+      <p class="hint">Supports color / B&W / with tips / without tips print modes via CSS classes</p>
+    </div>
+  </div>
+
+  <div id="changes-panel">
+    <h3>Change log <span onclick="clearLog()">Clear</span></h3>
+    <div id="change-log"><div class="change-empty">No changes yet</div></div>
+  </div>
+</div>
+
+<div id="statusbar">
+  <span id="st-pages">Pages: 0</span>
+  <span id="st-mode">Mode: none</span>
+  <span id="st-status">Ready</span>
+</div>
+
+<!-- Mini toolbar -->
+<div id="mini-toolbar">
+  <button onclick="miniCmd('bold')"><b>B</b></button>
+  <button onclick="miniCmd('italic')"><i>I</i></button>
+  <button onclick="miniCmd('underline')"><u>U</u></button>
+  <div class="mt-sep"></div>
+  <button onclick="miniCmd('foreColor','#e53e3e')" style="color:#e53e3e;">A</button>
+  <button onclick="miniCmd('foreColor','#2563eb')" style="color:#2563eb;">A</button>
+  <button onclick="miniCmd('foreColor','#000000')">A</button>
+  <div class="mt-sep"></div>
+  <button onclick="miniCmd('removeFormat')">&#10005;</button>
+</div>
+
+<!-- Context menu -->
+<div id="ctx-menu">
+  <button onclick="ctxTableAction('insertRowAbove')">Insert row above</button>
+  <button onclick="ctxTableAction('insertRowBelow')">Insert row below</button>
+  <button onclick="ctxTableAction('deleteRow')">Delete row</button>
+  <div class="ctx-sep"></div>
+  <button onclick="ctxTableAction('insertColLeft')">Insert column left</button>
+  <button onclick="ctxTableAction('insertColRight')">Insert column right</button>
+  <button onclick="ctxTableAction('deleteCol')">Delete column</button>
+  <div class="ctx-sep"></div>
+  <button onclick="ctxImgReplace()">Replace image...</button>
+  <div class="ctx-sep"></div>
+  <button onclick="ctxPadding('increase')">Increase spacing</button>
+  <button onclick="ctxPadding('decrease')">Decrease spacing</button>
+</div>
+
+<!-- Close confirm modal -->
+<div class="modal-overlay" id="close-modal">
+  <div class="modal-box">
+    <h3>Close document</h3>
+    <p class="warning">This will discard all unsaved edits and return to the welcome screen. Your original file is unchanged.</p>
+    <div class="modal-actions">
+      <button onclick="closeModal('close-modal')">Cancel</button>
+      <button class="danger" onclick="closeDocument()">Discard &amp; Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Insert image modal -->
+<div class="modal-overlay" id="insert-img-modal">
+  <div class="modal-box">
+    <h3>Insert image</h3>
+    <div id="img-dropzone" onclick="document.getElementById('img-file-input').click()">
+      <div>&#8679; Click to upload image from computer</div>
+      <div style="font-size:11px;margin-top:6px;">PNG, JPG, GIF, SVG supported</div>
+    </div>
+    <div class="modal-actions">
+      <button onclick="closeModal('insert-img-modal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Replace image modal -->
+<div class="modal-overlay" id="replace-img-modal">
+  <div class="modal-box">
+    <h3>Replace image</h3>
+    <div id="replace-img-dropzone" onclick="document.getElementById('replace-file-input').click()" style="border:2px dashed #ddd;border-radius:6px;padding:20px;text-align:center;cursor:pointer;color:#aaa;font-size:13px;margin-bottom:12px;">
+      &#8679; Click to upload replacement image
+    </div>
+    <input type="file" id="replace-file-input" accept="image/*" onchange="handleReplaceUpload(event)" style="display:none">
+    <div class="modal-actions">
+      <button onclick="closeModal('replace-img-modal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let currentModes = [], activeMode = null, changeLog = [], ctxTarget = null;
+let selectedImg = null, originalFileName = '';
+let isResizing = false, resizeImg = null, resizeStartX = 0, resizeStartW = 0;
+
+function toggleImport() {
+  document.getElementById('import-panel').classList.toggle('hidden');
+}
+
+function loadFile(e) {
+  const f = e.target.files[0];
+  if (!f) return;
+  originalFileName = f.name.replace(/\.html?$/i, '');
+  const r = new FileReader();
+  r.onload = ev => { document.getElementById('html-input').value = ev.target.result; renderHTML(); };
+  r.readAsText(f);
+  e.target.value = '';
+}
+
+function loadSample() {
+  originalFileName = 'math_bridge_sample';
+  const sample = `<!DOCTYPE html><html><head><style>
+body{font-family:Arial,sans-serif;margin:0;padding:0;}
+.mode-color .tip{display:block;background:#fffbea;border-left:4px solid #f6ad55;padding:10px 14px;margin:12px 0;border-radius:4px;}
+.mode-bw .tip{display:block;background:#f7f7f7;border-left:4px solid #999;padding:10px 14px;margin:12px 0;border-radius:4px;}
+.mode-notips .tip,.mode-bw-notips .tip{display:none;}
+.mode-color h1{color:#1a4e2a;}.mode-bw h1,.mode-notips h1,.mode-bw-notips h1{color:#111;}
+table{border-collapse:collapse;width:100%;}
+td,th{border:1px solid #ccc;padding:8px 12px;font-size:13px;}
+th{background:#1a4e2a;color:#fff;}
+.mode-bw th,.mode-notips th,.mode-bw-notips th{background:#444;}
+p{line-height:1.6;font-size:13px;margin-bottom:10px;}
+.page{padding:0;}
+.page-break{page-break-before:always;}
+</style></head><body class="mode-color">
+<div class="page">
+<h1>Math Bridge&#8482; HS Algebra 2 &mdash; Unit 1, Lesson 1</h1>
+<h2>Functions and Their Inverses</h2>
+<p>In this lesson, students explore the concept of inverse functions through visual and algebraic approaches.</p>
+<div class="tip"><strong>Teacher tip:</strong> Activate prior knowledge by asking students to describe what it means to "undo" an operation.</div>
+<h3>Vocabulary</h3>
+<table><tr><th>Term</th><th>Definition</th><th>Example</th></tr>
+<tr><td>Function</td><td>A relation where each input has exactly one output</td><td>f(x) = 2x + 3</td></tr>
+<tr><td>Inverse</td><td>A function that reverses the original function</td><td>f&#8315;&#185;(x) = (x&minus;3)/2</td></tr>
+<tr><td>Domain</td><td>The set of all valid input values</td><td>x &ge; 0</td></tr>
+<tr><td>Range</td><td>The set of all valid output values</td><td>y &ge; 3</td></tr></table>
+<div class="tip"><strong>ELL support:</strong> Provide the Puente de Palabras&#8482; companion guide for vocabulary previewing in Spanish.</div>
+</div>
+<div class="page page-break">
+<h2>Warmup: Mapping Machines</h2>
+<p>Use the function machine below to complete the table. Then write the inverse operation in the space provided.</p>
+<table><tr><th>Input (x)</th><th>Function: multiply by 3, then add 5</th><th>Output f(x)</th></tr>
+<tr><td>0</td><td></td><td>5</td></tr>
+<tr><td>2</td><td></td><td>11</td></tr>
+<tr><td>5</td><td></td><td>20</td></tr>
+<tr><td>10</td><td></td><td>35</td></tr></table>
+<p style="margin-top:16px;"><strong>Reflection:</strong> Describe in your own words how you would reverse the function above.</p>
+<div style="border:1px solid #ccc;min-height:60px;border-radius:4px;padding:10px;margin-top:8px;background:#fafafa;"></div>
+<div class="tip"><strong>Teacher tip:</strong> If students struggle, prompt with: "If you ended up at 35 and want to get back to 10, what steps would you reverse first?"</div>
+</div></body></html>`;
+  document.getElementById('html-input').value = sample;
+  renderHTML();
+}
+
+function detectPrintModes(html) {
+  const map = {'mode-color':'Color','mode-bw':'Black & White','mode-notips':'Color, no tips','mode-bw-notips':'B&W, no tips'};
+  return Object.entries(map).filter(([cls]) => html.includes(cls)).map(([cls,label]) => ({cls,label}));
+}
+
+function renderHTML() {
+  const raw = document.getElementById('html-input').value.trim();
+  if (!raw) return;
+  currentModes = detectPrintModes(raw);
+  activeMode = currentModes.length ? currentModes[0].cls : null;
+  renderModeBar();
+  buildPages(applyMode(raw, activeMode), raw);
+  document.getElementById('import-panel').classList.add('hidden');
+  ['btn-save','btn-close','btn-insert-img'].forEach(id => document.getElementById(id).style.display = 'flex');
+  document.getElementById('st-status').textContent = 'Document loaded — ' + (originalFileName || 'untitled');
+}
+
+function applyMode(rawHTML, modeCls) {
+  if (!modeCls) return rawHTML;
+  return rawHTML.replace(/(<body[^>]*class=")[^"]*(")/i, `$1${modeCls}$2`)
+                .replace(/(<body[^>]*class=')([^']*)(')/i, `$1${modeCls}$3`);
+}
+
+function buildPages(html, rawHTML) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, 'text/html');
+  const styleText = doc.querySelector('style') ? doc.querySelector('style').textContent : '';
+  const bodyClass = doc.body ? doc.body.className : '';
+  const allNodes = Array.from(doc.body.childNodes);
+
+  const pages = [];
+  let cur = [];
+  allNodes.forEach(node => {
+    if (node.nodeType === 1) {
+      const cls = node.className || '';
+      const st = node.getAttribute('style') || '';
+      if (cls.includes('page-break') || st.includes('page-break-before') || st.includes('break-before')) {
+        if (cur.length) pages.push(cur);
+        cur = [node]; return;
+      }
+    }
+    cur.push(node);
+  });
+  if (cur.length) pages.push(cur);
+
+  const canvas = document.getElementById('canvas-area');
+  canvas.innerHTML = '';
+
+  pages.forEach((nodes, i) => {
+    if (i > 0) {
+      const gap = document.createElement('div');
+      gap.className = 'page-gap';
+      gap.innerHTML = '<div class="page-gap-line"></div><div class="page-gap-label">page break</div><div class="page-gap-line"></div>';
+      canvas.appendChild(gap);
+    }
+
+    const page = document.createElement('div');
+    page.className = 'doc-page';
+
+    const rulerTop = document.createElement('div');
+    rulerTop.className = 'page-ruler-top';
+    rulerTop.innerHTML = `<span class="pg-label">PAGE ${i+1}</span><span class="pg-dims">8.5 &times; 11 in</span>`;
+    const ticks = document.createElement('div');
+    ticks.className = 'ruler-ticks';
+    for (let t = 0; t <= 6; t++) {
+      const tk = document.createElement('div');
+      tk.className = 'tick';
+      tk.style.left = (t / 6 * 100) + '%';
+      tk.style.height = t % 2 === 0 ? '10px' : '6px';
+      ticks.appendChild(tk);
+    }
+    rulerTop.appendChild(ticks);
+    page.appendChild(rulerTop);
+
+    const inner = document.createElement('div');
+    inner.className = 'page-inner';
+
+    const styleEl = document.createElement('style');
+    styleEl.textContent = styleText;
+    inner.appendChild(styleEl);
+
+    const content = document.createElement('div');
+    content.className = 'page-content ' + bodyClass;
+    content.contentEditable = 'true';
+    content.spellcheck = true;
+
+    nodes.forEach(n => content.appendChild(n.cloneNode(true)));
+
+    content.addEventListener('mouseup', onTextSelect);
+    content.addEventListener('keyup', () => logChange('Text edit', 'Content modified on page ' + (i+1)));
+    content.addEventListener('contextmenu', onContextMenu);
+    content.addEventListener('click', onClickElement);
+
+    inner.appendChild(content);
+    page.appendChild(inner);
+
+    const rulerBot = document.createElement('div');
+    rulerBot.className = 'page-ruler-bottom';
+    rulerBot.innerHTML = `<span>end of page ${i+1}</span>`;
+    page.appendChild(rulerBot);
+
+    canvas.appendChild(page);
+  });
+
+  document.getElementById('st-pages').textContent = 'Pages: ' + pages.length;
+  updateModeStatus();
+}
+
+function renderModeBar() {
+  const bar = document.getElementById('mode-buttons');
+  if (!currentModes.length) { bar.innerHTML = '<span class="mode-none">No print modes detected</span>'; return; }
+  bar.innerHTML = currentModes.map(m =>
+    `<button class="${m.cls===activeMode?'active':''}" onclick="switchMode('${m.cls}')">${m.label}</button>`
+  ).join('');
+}
+
+function switchMode(cls) {
+  activeMode = cls;
+  const raw = document.getElementById('html-input').value;
+  buildPages(applyMode(raw, cls), raw);
+  renderModeBar();
+  logChange('Print mode', 'Switched to: ' + (currentModes.find(m=>m.cls===cls)?.label||cls));
+}
+
+function updateModeStatus() {
+  const lbl = currentModes.find(m=>m.cls===activeMode);
+  document.getElementById('st-mode').textContent = 'Mode: ' + (lbl?lbl.label:'none');
+  document.getElementById('active-mode-label').textContent = lbl ? 'Active: '+lbl.label : '';
+}
+
+function execCmd(cmd, val) {
+  document.execCommand(cmd, false, val||null);
+  logChange('Format', cmd+(val?': '+val:''));
+}
+function sizeToLegacy(pt) {
+  if (pt<=10) return 1; if (pt<=13) return 2; if (pt<=16) return 3;
+  if (pt<=18) return 4; if (pt<=24) return 5; if (pt<=32) return 6; return 7;
+}
+function miniCmd(cmd, val) { document.execCommand(cmd, false, val||null); hideMiniToolbar(); logChange('Format', cmd); }
+
+let miniTO;
+function onTextSelect() {
+  clearTimeout(miniTO);
+  miniTO = setTimeout(() => {
+    const sel = window.getSelection();
+    if (!sel||sel.isCollapsed) { hideMiniToolbar(); return; }
+    const rect = sel.getRangeAt(0).getBoundingClientRect();
+    if (!rect.width) { hideMiniToolbar(); return; }
+    const mt = document.getElementById('mini-toolbar');
+    mt.style.display = 'flex';
+    mt.style.left = (rect.left+rect.width/2-80)+'px';
+    mt.style.top = (rect.top-40)+'px';
+  }, 100);
+}
+function hideMiniToolbar() { document.getElementById('mini-toolbar').style.display='none'; }
+
+document.addEventListener('mousedown', e => {
+  if (!e.target.closest('#mini-toolbar')) hideMiniToolbar();
+  if (!e.target.closest('#ctx-menu')) hideCtxMenu();
+});
+
+function onContextMenu(e) {
+  e.preventDefault();
+  ctxTarget = e.target;
+  const m = document.getElementById('ctx-menu');
+  m.style.display = 'block';
+  m.style.left = e.clientX+'px';
+  m.style.top = e.clientY+'px';
+}
+function hideCtxMenu() { document.getElementById('ctx-menu').style.display='none'; }
+
+function onClickElement(e) {
+  document.querySelectorAll('.page-content img').forEach(i => { i.classList.remove('img-selected'); });
+  if (e.target.tagName==='IMG') { e.target.classList.add('img-selected'); selectedImg = e.target; }
+  else selectedImg = null;
+}
+
+/* Image insert */
+function insertImagePrompt() {
+  document.getElementById('insert-img-modal').classList.add('show');
+}
+function handleImgUpload(e) {
+  const f = e.target.files[0];
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = ev => {
+    const img = document.createElement('img');
+    img.src = ev.target.result;
+    img.style.width = '200px';
+    img.style.cursor = 'nwse-resize';
+    makeResizable(img);
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount) {
+      const range = sel.getRangeAt(0);
+      range.insertNode(img);
+    } else {
+      const contents = document.querySelectorAll('.page-content');
+      if (contents.length) contents[0].appendChild(img);
+    }
+    closeModal('insert-img-modal');
+    logChange('Image', 'Image inserted');
+  };
+  r.readAsDataURL(f);
+  e.target.value = '';
+}
+
+/* Image replace */
+function ctxImgReplace() {
+  hideCtxMenu();
+  if (ctxTarget && ctxTarget.tagName==='IMG') selectedImg = ctxTarget;
+  if (!selectedImg) { alert('Click an image first, then right-click to replace.'); return; }
+  document.getElementById('replace-img-modal').classList.add('show');
+}
+function handleReplaceUpload(e) {
+  const f = e.target.files[0];
+  if (!f || !selectedImg) return;
+  const r = new FileReader();
+  r.onload = ev => { selectedImg.src = ev.target.result; logChange('Image', 'Image replaced'); closeModal('replace-img-modal'); };
+  r.readAsDataURL(f);
+  e.target.value = '';
+}
+
+/* Image resize via drag on corner */
+function makeResizable(img) {
+  img.addEventListener('mousedown', e => {
+    const rect = img.getBoundingClientRect();
+    const nearRight = e.clientX > rect.right - 16;
+    const nearBottom = e.clientY > rect.bottom - 16;
+    if (nearRight && nearBottom) {
+      e.preventDefault();
+      isResizing = true; resizeImg = img;
+      resizeStartX = e.clientX; resizeStartW = img.offsetWidth;
+    }
+  });
+}
+
+document.addEventListener('mousemove', e => {
+  if (!isResizing || !resizeImg) return;
+  const dx = e.clientX - resizeStartX;
+  const newW = Math.max(40, resizeStartW + dx);
+  resizeImg.style.width = newW + 'px';
+  resizeImg.style.height = 'auto';
+});
+document.addEventListener('mouseup', () => {
+  if (isResizing) { logChange('Image', 'Image resized'); isResizing = false; resizeImg = null; }
+});
+
+/* Add resize cursor hint to existing images after render */
+function initExistingImages() {
+  document.querySelectorAll('.page-content img').forEach(img => {
+    img.style.cursor = 'default';
+    img.title = 'Drag bottom-right corner to resize. Right-click to replace.';
+    makeResizable(img);
+  });
+}
+
+/* Table actions */
+function ctxTableAction(action) {
+  hideCtxMenu();
+  const td = ctxTarget?.closest('td,th'), tr = ctxTarget?.closest('tr'), table = ctxTarget?.closest('table');
+  if (!table) return;
+  if (action==='insertRowBelow'&&tr) { const nr=tr.cloneNode(true); nr.querySelectorAll('td,th').forEach(c=>c.textContent=''); tr.after(nr); logChange('Table','Row inserted below'); }
+  else if (action==='insertRowAbove'&&tr) { const nr=tr.cloneNode(true); nr.querySelectorAll('td,th').forEach(c=>c.textContent=''); tr.before(nr); logChange('Table','Row inserted above'); }
+  else if (action==='deleteRow'&&tr) { tr.remove(); logChange('Table','Row deleted'); }
+  else if (action==='insertColRight'&&td) {
+    const idx=Array.from(tr.cells).indexOf(td);
+    table.querySelectorAll('tr').forEach(row=>{ const ref=row.cells[idx]; if(ref){ const nc=document.createElement(ref.tagName); ref.after(nc); }});
+    logChange('Table','Column inserted right');
+  } else if (action==='insertColLeft'&&td) {
+    const idx=Array.from(tr.cells).indexOf(td);
+    table.querySelectorAll('tr').forEach(row=>{ const ref=row.cells[idx]; if(ref){ const nc=document.createElement(ref.tagName); ref.before(nc); }});
+    logChange('Table','Column inserted left');
+  } else if (action==='deleteCol'&&td) {
+    const idx=Array.from(tr.cells).indexOf(td);
+    table.querySelectorAll('tr').forEach(row=>{ if(row.cells[idx]) row.cells[idx].remove(); });
+    logChange('Table','Column deleted');
+  }
+}
+
+function ctxPadding(dir) {
+  hideCtxMenu();
+  const el = ctxTarget?.closest('p,div,h1,h2,h3,h4,li') || ctxTarget;
+  if (!el) return;
+  const cur = parseInt(window.getComputedStyle(el).paddingTop)||0;
+  el.style.padding = Math.max(0,cur+(dir==='increase'?8:-8))+'px';
+  logChange('Spacing', dir==='increase'?'Spacing increased':'Spacing decreased');
+}
+
+/* Close / Save */
+function confirmClose() { document.getElementById('close-modal').classList.add('show'); }
+function closeDocument() {
+  closeModal('close-modal');
+  document.getElementById('canvas-area').innerHTML = '<div id="welcome"><h2>HTML PDF Correction Tool</h2><p>Upload or paste your Claude-generated HTML to begin editing.</p><p class="hint">Supports color / B&W / with tips / without tips print modes via CSS classes</p></div>';
+  document.getElementById('mode-buttons').innerHTML = '<span class="mode-none">Load a document to see available print modes</span>';
+  document.getElementById('active-mode-label').textContent = '';
+  document.getElementById('st-pages').textContent = 'Pages: 0';
+  document.getElementById('st-mode').textContent = 'Mode: none';
+  document.getElementById('st-status').textContent = 'Ready';
+  ['btn-save','btn-close','btn-insert-img'].forEach(id => document.getElementById(id).style.display='none');
+  currentModes=[]; activeMode=null; changeLog=[]; clearLog();
+}
+
+function saveEdited() {
+  const pages = document.querySelectorAll('.page-content');
+  if (!pages.length) return;
+  let body = '';
+  pages.forEach(p => { body += p.innerHTML; });
+  const raw = document.getElementById('html-input').value;
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(raw, 'text/html');
+  const styleText = doc.querySelector('style') ? '<style>'+doc.querySelector('style').textContent+'</style>' : '';
+  const modeClass = activeMode || '';
+  const output = `<!DOCTYPE html><html><head><meta charset="UTF-8">${styleText}</head><body class="${modeClass}">${body}</body></html>`;
+  const blob = new Blob([output], {type:'text/html'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  const base = originalFileName || 'document';
+  a.download = base + '_edited.html';
+  a.click();
+  logChange('Save', 'Saved as ' + a.download);
+}
+
+function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+
+function exportPDF() {
+  const lbl = currentModes.find(m=>m.cls===activeMode);
+  if (confirm((lbl?'Exporting as: '+lbl.label+'\n\n':'')+'This will open the browser print dialog. Select "Save as PDF" as the destination.')) {
+    document.getElementById('st-status').textContent = 'Preparing print...';
+    setTimeout(()=>{ window.print(); document.getElementById('st-status').textContent='Ready'; },200);
+  }
+}
+
+function logChange(type, desc) {
+  const t = new Date(); const ts = t.getHours().toString().padStart(2,'0')+':'+t.getMinutes().toString().padStart(2,'0');
+  changeLog.unshift({type,desc,ts});
+  if (changeLog.length>50) changeLog.pop();
+  renderLog();
+}
+function renderLog() {
+  const el = document.getElementById('change-log');
+  el.innerHTML = changeLog.length ? changeLog.map(c=>`<div class="change-item"><div class="ct">${c.type}</div><div class="cd">${c.desc}<br><span style="color:#bbb">${c.ts}</span></div></div>`).join('') : '<div class="change-empty">No changes yet</div>';
+}
+function clearLog() { changeLog=[]; renderLog(); }
+
+document.getElementById('canvas-area').addEventListener('DOMNodeInserted', () => { initExistingImages(); });
+</script>
+</body>
+</html>
