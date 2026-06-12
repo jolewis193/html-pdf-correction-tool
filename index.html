@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>HTML PDF Correction Tool v1.4</title>
+<title>HTML PDF Correction Tool v1.4.1</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#555;height:100vh;display:flex;flex-direction:column;overflow:hidden;}
@@ -144,7 +144,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 
 <div id="topbar">
   <div class="logo">HTML PDF Correction Tool</div>
-  <div class="ver">v1.4</div>
+  <div class="ver">v1.5</div>
   <div id="filename-badge"></div>
   <div class="sp"></div>
   <button onclick="document.getElementById('file-input').click()">&#8679; Upload HTML</button>
@@ -368,36 +368,97 @@ function measureAndRender(){
 }
 
 function calcBreaks(d,totalH){
-  const breaks=[0];
-  const all=Array.from(d.body.querySelectorAll('*'));
   const win=d.defaultView;
+  const all=Array.from(d.body.querySelectorAll('*'));
+  const breaks=new Set([0]);
+
+  // PASS 1: explicit page-sized blocks (.page, .section-opener, min-height >= 800px)
+  // These ARE the pages — use their tops as break points directly
+  const pageBlocks=all.filter(el=>{
+    const cs=win.getComputedStyle(el);
+    const mh=parseFloat(cs.minHeight)||0;
+    const cls=el.className||'';
+    return cls.includes('page')||cls.includes('section-opener')||cls.includes('cover')||mh>=800;
+  });
+
+  pageBlocks.forEach(el=>{
+    const r=el.getBoundingClientRect();
+    if(r.top>2) breaks.add(Math.round(r.top));
+    // also add bottom for cover/opener blocks that are exactly one page
+    const cs=win.getComputedStyle(el);
+    const pba=cs.pageBreakAfter||cs.breakAfter;
+    if(pba==='always'||pba==='page') breaks.add(Math.round(r.bottom));
+  });
+
+  // PASS 2: explicit CSS page-break declarations on any element
   all.forEach(el=>{
     const cs=win.getComputedStyle(el);
     const pbb=cs.pageBreakBefore||cs.breakBefore;
     const pba=cs.pageBreakAfter||cs.breakAfter;
     const r=el.getBoundingClientRect();
-    if((pbb==='always'||pbb==='page')&&r.top>2)breaks.push(Math.round(r.top));
-    if((pba==='always'||pba==='page')&&r.bottom>2)breaks.push(Math.round(r.bottom));
+    if((pbb==='always'||pbb==='page')&&r.top>2) breaks.add(Math.round(r.top));
+    if((pba==='always'||pba==='page')&&r.bottom>2) breaks.add(Math.round(r.bottom));
   });
-  const unique=[...new Set(breaks)].sort((a,b)=>a-b);
-  const final=[0];let cursor=0;
-  for(let i=1;i<unique.length;i++){
-    const bp=unique[i];
-    while(cursor+PH<bp-20){cursor=findNatural(d,cursor+PH,all);final.push(cursor);}
-    if(bp>cursor+20){final.push(bp);cursor=bp;}
+
+  // Sort and fill gaps with smart auto-pagination
+  const sorted=[...breaks].sort((a,b)=>a-b);
+  const final=[0];
+  let cursor=0;
+
+  for(let i=1;i<sorted.length;i++){
+    const bp=sorted[i];
+    // if gap between cursor and next explicit break > one page, fill it
+    while(cursor+PH<bp-40){
+      cursor=findNatural(d,cursor+PH,all,win);
+      final.push(cursor);
+    }
+    if(bp>cursor+40){final.push(bp);cursor=bp;}
   }
-  while(cursor+PH<totalH-20){cursor=findNatural(d,cursor+PH,all);final.push(cursor);}
+  // fill remaining content after last explicit break
+  while(cursor+PH<totalH-40){
+    cursor=findNatural(d,cursor+PH,all,win);
+    final.push(cursor);
+  }
+
   return [...new Set(final)].sort((a,b)=>a-b);
 }
 
-function findNatural(d,target,all){
-  let best=target,bd=Infinity;
+function findNatural(d,target,all,win){
+  // Find the best element boundary near target that:
+  // 1. Does NOT split a break-inside:avoid element
+  // 2. Prefers tops of block elements over bottoms
+  // 3. Avoids cutting mid-element
+  const avoidEls=all.filter(el=>{
+    const cs=win.getComputedStyle(el);
+    const bi=cs.pageBreakInside||cs.breakInside;
+    return bi==='avoid'||bi==='avoid-page';
+  });
+
+  // Build list of candidate break positions — element tops and bottoms
+  // weighted by proximity to target, excluding positions that would split an avoid-element
+  let best=target, bd=Infinity;
+
   all.forEach(el=>{
     const r=el.getBoundingClientRect();
-    [r.top,r.bottom].forEach(y=>{
-      if(y>target-80&&y<target+80){const dist=Math.abs(y-target);if(dist<bd){bd=dist;best=y;}}
+    const cs=win.getComputedStyle(el);
+    const disp=cs.display;
+    if(disp==='inline'||disp==='none') return;
+
+    [r.top, r.bottom].forEach(y=>{
+      if(y<target-120||y>target+120) return;
+      // check this position doesn't split any avoid element
+      const splits=avoidEls.some(av=>{
+        const ar=av.getBoundingClientRect();
+        return y>ar.top+4&&y<ar.bottom-4;
+      });
+      if(splits) return;
+      const dist=Math.abs(y-target);
+      // prefer tops of elements (cleaner break before a new block)
+      const weight=y===r.top?0.9:1.0;
+      if(dist*weight<bd){bd=dist*weight;best=y;}
     });
   });
+
   return Math.round(best);
 }
 
